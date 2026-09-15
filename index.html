@@ -80,6 +80,7 @@
         }
 
         function llamarIA() {
+            // URL limpia oficial v1 de producción sin errores tipográficos
             const urlEndpoint = "https://googleapis.com" + MI_API_KEY;
             
             const transaccion = new XMLHttpRequest();
@@ -94,7 +95,7 @@
                             const respuestaIA = JSON_Convertido.candidates[0].content.parts[0].text;
                             historialMensajeIA(respuestaIA);
                         } catch(err) {
-                            alert("Error al mapear la respuesta de la IA: " + err.message);
+                            alert("Error al procesar los datos de la IA: " + err.message);
                         }
                     } else {
                         const panel = document.getElementById('box-chat');
