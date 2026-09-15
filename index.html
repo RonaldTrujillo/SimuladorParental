@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador de Crianza con IA</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background: #f3f4f6; color: #1f2937; padding: 30px 15px; display: flex; justify-content: center; min-height: 100vh; align-items: center; }
+        .box { max-width: 650px; width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e5e7eb; }
+        .header { background: #4f46e5; color: #fff; padding: 20px; text-align: center; }
+        .body { padding: 20px; }
+        .group { margin-bottom: 15px; }
+        .group label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+        .group input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; outline: none; }
+        .btn { width: 100%; background: #4f46e5; color: #fff; border: none; padding: 12px; font-size: 15px; font-weight: 700; border-radius: 6px; cursor: pointer; }
+        .btn:hover { background: #4338ca; }
+        .chat-area { display: none; border-top: 1px solid #e5e7eb; padding: 20px; background: #f9fafb; }
+        .chat-box { height: 260px; overflow-y: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 10px; font-size: 14px; }
+        .msg { padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; line-height: 1.4; }
+        .m-padre { background: #e0f2fe; color: #0369a1; }
+        .m-hijo { background: #f3f4f6; color: #1f2937; }
+        .m-eval { background: #f0fdf4; color: #166534; }
+        .input-row { display: flex; gap: 8px; }
+        .input-row input { flex: 1; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+        .btn-send { background: #059669; color: #fff; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="header">
+            <h2>Simulador de Comunicación Asertiva</h2>
+        </div>
+        <div class="body">
+            <div class="group"><label>Edad del niño/a:</label><input type="text" id="edad" value="9 años"></div>
+            <div class="group"><label>Problema o conflicto:</label><input type="text" id="prob" value="No quiere hacer la tarea ni limpiar"></div>
+            <div class="group"><label>Actitud / Comportamiento:</label><input type="text" id="act" value="Rebelde, engreído y se victimiza"></div>
+            <button onclick="iniciar()" class="btn">Iniciar Simulación Real</button>
+        </div>
+        <div id="c-chat" class="chat-area">
+            <div id="box-chat" class="chat-box"></div>
+            <div class="input-row">
+                <input type="text" id="u-in" placeholder="Escribe aquí... (O escribe 'EVALUAR')">
+                <button onclick="enviar()" class="btn-send">Enviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MI_API_KEY = "AQ.Ab8RN6LBPSxYPeQDXoVsMhL3_ArKP0_iAIzl7wOFzbbsTsxt4A";
+        let historia = [];
+
+        function generarPrompt() {
+            const e = document.getElementById('edad').value;
+            const p = document.getElementById('prob').value;
+            const a = document.getElementById('act').value;
+            return `Actúa como un experto en crianza respetuosa, psicología infantil y pedagogía. Vamos a hacer un juego de rol (roleplay) interactivo para practicar la comunicación con mi hijo. Tú asumirás el rol de mi hijo/a. Yo te daré la edad, el problema a tratar y tu actitud. Me responderás en personaje, un mensaje a la vez, permitiéndome responderte de forma interactiva (como una conversación real). Mantendrás el personaje de forma realista hasta que yo escriba la palabra clave "EVALUAR". En ese momento, saldrás del personaje y me darás un análisis pedagógico con: 1. Tus puntos fuertes (lo que hice bien en empatía, límites, etc.). 2. Propuestas de mejora (estrategias concretas de crianza respetuosa para abordar mejor la situación).\n\nPara empezar este juego de rol, hoy el perfil es:\n- Edad: ${e}\n- Problema: ${p}\n- Actitud: ${a}\n\nInicia la conversación como mi hijo/a diciéndome el primer comentario conflictivo para yo poder responderte.`;
+        }
+
+        function iniciar() {
+            document.getElementById('c-chat').style.display = 'block';
+            const b = document.getElementById('box-chat');
+            b.innerHTML = '<p style="color:#9ca3af; text-align:center; font-style:italic; padding:10px;">La IA de Google está construyendo el personaje...</p>';
+            
+            historia = [
+                { role: "user", parts: [{ text: generarPrompt() }] }
+            ];
+            llamarIA();
+        }
+
+        function enviar() {
+            const inp = document.getElementById('u-in');
+            const txt = inp.value.trim();
+            if(!txt) return;
+
+            addMsg("Tú (Padre/Madre)", txt, "m-padre");
+            historia.push({ role: "user", parts: [{ text: txt }] });
+            inp.value = '';
+
+            llamarIA();
+        }
+
+        function llamarIA() {
+            const urlEndpoint = "https://googleapis.com" + MI_API_KEY;
+            
+            const transaccion = new XMLHttpRequest();
+            transaccion.open("POST", urlEndpoint, true);
+            transaccion.setRequestHeader("Content-Type", "application/json");
+            
+            transaccion.onreadystatechange = function () {
+                if (transaccion.readyState === 4) {
+                    if (transaccion.status === 200) {
+                        try {
+                            const JSON_Convertido = JSON.parse(transaccion.responseText);
+                            const respuestaIA = JSON_Convertido.candidates[0].content.parts[0].text;
+                            historialMensajeIA(respuestaIA);
+                        } catch(err) {
+                            alert("Error al mapear la respuesta de la IA: " + err.message);
+                        }
+                    } else {
+                        const panel = document.getElementById('box-chat');
+                        panel.innerHTML = "";
+                        try {
+                            const errorDetallado = JSON.parse(transaccion.responseText);
+                            alert("Aviso de Google: " + errorDetallado.error.message);
+                        } catch(e) {
+                            alert("Fallo en la comunicación de red.");
+                        }
+                    }
+                }
+            };
+            
+            transaccion.send(JSON.stringify({ contents: historia }));
+        }
+
+        function historialMensajeIA(respuestaIA) {
+            historia.push({ role: "model", parts: [{ text: respuestaIA }] });
+            const ultimaPreguntaPadre = historia[historia.length - 2].parts[0].text.toUpperCase();
+            
+            if(ultimaPreguntaPadre === "EVALUAR") {
+                addMsg("Evaluación Pedagógica", respuestaIA, "m-eval");
+            } else {
+                addMsg("Hijo/a", respuestaIA, "m-hijo");
+            }
+        }
+
+        function addMsg(rem, t, cls) {
+            const b = document.getElementById('box-chat');
+            if(b.innerHTML.includes("La IA de Google")) b.innerHTML = "";
+            const d = document.createElement('div');
+            d.className = `msg ${cls}`;
+            d.innerHTML = `<strong>${rem}:</strong> <p style="margin-top:2px; white-space:pre-line;">${t}</p>`;
+            b.appendChild(d);
+            b.scrollTop = b.scrollHeight;
+        }
+    </script>
+</body>
+</html>
