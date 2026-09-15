@@ -20,9 +20,18 @@
         .m-padre { background: #e0f2fe; color: #0369a1; }
         .m-hijo { background: #f3f4f6; color: #1f2937; }
         .m-eval { background: #f0fdf4; color: #166534; }
+        .eval-box { margin-top: 15px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fff; display: none; }
+        .eval-title { font-weight: 700; margin-bottom: 10px; }
+        .eval-section { margin-bottom: 10px; }
+        .eval-section h4 { font-size: 14px; margin-bottom: 4px; }
+        .usage-box { margin-top: 12px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; color: #475569; }
         .input-row { display: flex; gap: 8px; }
         .input-row input { flex: 1; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
         .btn-send { background: #059669; color: #fff; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: 700; }
+        .btn-eval { width: 100%; background: #7c3aed; color: #fff; border: none; padding: 12px; font-size: 15px; font-weight: 700; border-radius: 6px; cursor: pointer; margin-top: 10px; display: none; }
+        .btn-eval:hover { background: #6d28d9; }
+        .group-inline { display: flex; gap: 10px; align-items: center; }
+        .group-inline input { flex: 1; }
     </style>
 </head>
 <body>
@@ -32,39 +41,120 @@
         </div>
         <div class="body">
             <div class="group"><label>Edad del niño/a:</label><input type="text" id="edad" value="9 años"></div>
+            <div class="group"><label>Sexo del hijo/a:</label>
+                <select id="sexo">
+                    <option value="femenino">Femenino</option>
+                    <option value="masculino">Masculino</option>
+                </select>
+            </div>
             <div class="group"><label>Problema o conflicto:</label><input type="text" id="prob" value="No quiere hacer la tarea ni limpiar"></div>
             <div class="group"><label>Actitud / Comportamiento:</label><input type="text" id="act" value="Rebelde, engreído y se victimiza"></div>
+            <div class="group">
+
+                <label>Interacciones para evaluar:</label>
+
+                <div class="group-inline">
+                    <input type="number" id="umbral" value="5" min="1">
+                </div>
+            </div>
             <button onclick="iniciar()" class="btn">Iniciar Simulación Real</button>
         </div>
         <div id="c-chat" class="chat-area">
             <div id="box-chat" class="chat-box"></div>
+            <div id="eval-box" class="eval-box"></div>
+            <div id="usage-box" class="usage-box">Tokens: 0</div>
             <div class="input-row">
-                <input type="text" id="u-in" placeholder="Escribe aquí... (O escribe 'EVALUAR')">
+                <input type="text" id="u-in" placeholder="Escribe aquí..." onkeydown="if(event.key==='Enter'){enviar();}">
                 <button onclick="enviar()" class="btn-send">Enviar</button>
             </div>
+            <button onclick="evaluar()" class="btn-eval">Evaluar comportamiento</button>
         </div>
     </div>
 
     <script>
-        const MI_API_KEY = "AQ.Ab8RN6LBPSxYPeQDXoVsMhL3_ArKP0_iAIzl7wOFzbbsTsxt4A";
         let historia = [];
+        let MI_API_KEY = null;
+        let interaccionesPadre = 0;
+        let vozActual = null;
+        let estadoBase = "";
+        let tokensPrompt = 0;
+        let tokensRespuesta = 0;
+
+        async function cargarSecrets() {
+            const respuesta = await fetch("./secrets.json", { cache: "no-store" });
+            if (!respuesta.ok) {
+                throw new Error("No se pudo leer secrets.json");
+            }
+
+            const secretos = await respuesta.json();
+            if (!secretos.apiKey) {
+                throw new Error("Falta apiKey en secrets.json");
+            }
+
+            MI_API_KEY = secretos.apiKey;
+        }
+
+        async function pedirIA() {
+            recortarHistorial();
+            const respuesta = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contents: historia })
+            });
+
+            if (!respuesta.ok) {
+                throw new Error(await respuesta.text());
+            }
+            return await respuesta.json();
+        }
 
         function generarPrompt() {
             const e = document.getElementById('edad').value;
+            const s = document.getElementById('sexo').value;
             const p = document.getElementById('prob').value;
             const a = document.getElementById('act').value;
-            return `Actúa como un experto en crianza respetuosa, psicología infantil y pedagogía. Vamos a hacer un juego de rol (roleplay) interactivo para practicar la comunicación con mi hijo. Tú asumirás el rol de mi hijo/a. Yo te daré la edad, el problema a tratar y tu actitud. Me responderás en personaje, un mensaje a la vez, permitiéndome responderte de forma interactiva (como una conversación real). Mantendrás el personaje de forma realista hasta que yo escriba la palabra clave "EVALUAR". En ese momento, saldrás del personaje y me darás un análisis pedagógico con: 1. Tus puntos fuertes (lo que hice bien en empatía, límites, etc.). 2. Propuestas de mejora (estrategias concretas de crianza respetuosa para abordar mejor la situación).\n\nPara empezar este juego de rol, hoy el perfil es:\n- Edad: ${e}\n- Problema: ${p}\n- Actitud: ${a}\n\nInicia la conversación como mi hijo/a diciéndome el primer comentario conflictivo para yo poder responderte.`;
+            return `hijo/a sexo=${s} edad=${e} situacion=${p} estilo=${a}; responde breve y consistente`;
+        }
+
+        function generarPromptEvaluacion() {
+            return "JSON: fortalezas, debilidades, mejoras.";
+        }
+
+        function generarContexto() {
+            const e = document.getElementById('edad').value;
+            const s = document.getElementById('sexo').value;
+            const p = document.getElementById('prob').value;
+            const a = document.getElementById('act').value;
+            return `e=${e}|s=${s}|p=${p}|a=${a}`;
+        }
+
+        function generarEstadoBase() {
+            const e = document.getElementById('edad').value;
+            const s = document.getElementById('sexo').value;
+            const p = document.getElementById('prob').value;
+            const a = document.getElementById('act').value;
+            return `e=${e}|s=${s}|p=${p}|a=${a}`;
         }
 
         function iniciar() {
-            document.getElementById('c-chat').style.display = 'block';
-            const b = document.getElementById('box-chat');
-            b.innerHTML = '<p style="color:#9ca3af; text-align:center; font-style:italic; padding:10px;">La IA de Google está construyendo el personaje...</p>';
-            
-            historia = [
-                { role: "user", parts: [{ text: generarPrompt() }] }
-            ];
-            llamarIA();
+            cargarSecrets().then(function () {
+                document.getElementById('c-chat').style.display = 'block';
+                document.querySelector('.btn-eval').style.display = 'none';
+                const b = document.getElementById('box-chat');
+                b.innerHTML = '<p style="color:#9ca3af; text-align:center; font-style:italic; padding:10px;">La IA está construyendo el personaje...</p>';
+                interaccionesPadre = 0;
+
+                historia = [
+                    { role: "user", parts: [{ text: generarPrompt() }] }
+                ];
+                estadoBase = generarEstadoBase();
+                tokensPrompt = 0;
+                tokensRespuesta = 0;
+                actualizarTokens(0, 0);
+                llamarIA();
+            }).catch(function (err) {
+                alert(err.message);
+            });
         }
 
         function enviar() {
@@ -73,58 +163,158 @@
             if(!txt) return;
 
             addMsg("Tú (Padre/Madre)", txt, "m-padre");
-            historia.push({ role: "user", parts: [{ text: txt }] });
+            historia = [
+                historia[0],
+                { role: "user", parts: [{ text: "p=" + txt }] }
+            ];
+            interaccionesPadre++;
+            mostrarBotonEvaluarSiCorresponde();
             inp.value = '';
 
             llamarIA();
         }
 
+        function evaluar() {
+            historia = [
+                historia[0],
+                { role: "user", parts: [{ text: "eval" }] }
+            ];
+            llamarIA();
+        }
+
+        function recortarHistorial() {
+            if (historia.length <= 2) return;
+            historia = [historia[0], historia[historia.length - 1]];
+        }
+
+        function mostrarBotonEvaluarSiCorresponde() {
+            const umbral = parseInt(document.getElementById('umbral').value, 10) || 5;
+            if (interaccionesPadre >= umbral) {
+                document.querySelector('.btn-eval').style.display = 'block';
+            }
+        }
+
         function llamarIA() {
-            // Reescrito con blindaje absoluto: forzamos el texto limpio de la URL
-            let urlEndpoint = "https://googleapis.com" + MI_API_KEY;
-            
-            // Si por alguna razón queda rastro de la caché corrupta anterior, el código la autodestruye aquí
-            urlEndpoint = urlEndpoint.replace("comag", "com");
-            
-            const transaccion = new XMLHttpRequest();
-            transaccion.open("POST", urlEndpoint, true);
-            transaccion.setRequestHeader("Content-Type", "application/json");
-            
-            transaccion.onreadystatechange = function () {
-                if (transaccion.readyState === 4) {
-                    if (transaccion.status === 200) {
-                        try {
-                            const JSON_Convertido = JSON.parse(transaccion.responseText);
-                            const respuestaIA = JSON_Convertido.candidates[0].content.parts[0].text;
-                            historialMensajeIA(respuestaIA);
-                        } catch(err) {
-                            alert("Error al procesar la estructura de la respuesta: " + err.message);
-                        }
-                    } else {
-                        const panel = document.getElementById('box-chat');
-                        panel.innerHTML = "";
-                        try {
-                            const errorDetallado = JSON.parse(transaccion.responseText);
-                            alert("Aviso de Google: " + errorDetallado.error.message);
-                        } catch(e) {
-                            alert("Fallo en la comunicación de red remota.");
+            pedirIA().then(function (data) {
+                if (data.usageMetadata) {
+                    actualizarTokens(data.usageMetadata.promptTokenCount || 0, data.usageMetadata.candidatesTokenCount || 0);
+                }
+                var respuestaIA = extraerTextoIA(data);
+                if (!respuestaIA) {
+                    throw new Error("La IA no devolvió texto. Respuesta: " + JSON.stringify(data));
+                }
+                historialMensajeIA(respuestaIA);
+            }).catch(function (err) {
+                var mensaje = err && err.message ? err.message : "";
+                if (mensaje.indexOf('429') !== -1 || mensaje.indexOf('503') !== -1 || mensaje.indexOf('Too Many Requests') !== -1 || mensaje.indexOf('Service Unavailable') !== -1) {
+                    addMsg("Sistema", "Se acabó la cuota de la IA. Intenta más tarde.", "m-eval");
+                    return;
+                }
+                addMsg("Sistema", "No se pudo obtener respuesta de la IA.", "m-eval");
+            });
+        }
+
+        function respuestaLocalDeRespaldo() {
+            var ultimo = historia[historia.length - 1].parts[0].text.toUpperCase();
+            if (ultimo === "EVALUAR") {
+                return "Puntos fuertes: mantuviste el diálogo abierto y con intención de resolver.\n\nPropuestas de mejora: valida emociones, usa frases breves y claras, y cierra con un límite concreto.";
+            }
+            if (ultimo.indexOf("TAREA") !== -1 || ultimo.indexOf("LIMPIAR") !== -1) {
+                return "No quiero hacerlo ahora. ¿Podemos hacerlo en cinco minutos?";
+            }
+            return "No me gusta esto.";
+        }
+
+        function extraerTextoIA(data) {
+            if (!data) return "";
+            if (typeof data.text === "string" && data.text) return data.text;
+            if (data.candidates && data.candidates.length) {
+                for (var i = 0; i < data.candidates.length; i++) {
+                    var candidate = data.candidates[i];
+                    if (candidate.content && candidate.content.parts && candidate.content.parts.length) {
+                        for (var j = 0; j < candidate.content.parts.length; j++) {
+                            if (candidate.content.parts[j] && typeof candidate.content.parts[j].text === "string" && candidate.content.parts[j].text) {
+                                return candidate.content.parts[j].text;
+                            }
                         }
                     }
                 }
-            };
-            
-            transaccion.send(JSON.stringify({ contents: historia }));
+            }
+            return "";
         }
 
         function historialMensajeIA(respuestaIA) {
+            if (historia.length === 0) return;
             historia.push({ role: "model", parts: [{ text: respuestaIA }] });
-            const ultimaPreguntaPadre = historia[historia.length - 2].parts[0].text.toUpperCase();
-            
-            if(ultimaPreguntaPadre === "EVALUAR") {
+            if (historia.length >= 2 && historia[historia.length - 2].parts[0].text.indexOf("Devuelve SOLO un JSON válido") !== -1) {
+                renderEvaluacion(respuestaIA);
                 addMsg("Evaluación Pedagógica", respuestaIA, "m-eval");
-            } else {
-                addMsg("Hijo/a", respuestaIA, "m-hijo");
+                hablarTexto("Evaluación final generada.");
+                return;
             }
+            addMsg("Hijo/a", recortarRespuesta(respuestaIA), "m-hijo");
+            hablarTexto(recortarRespuesta(respuestaIA));
+        }
+
+        function recortarRespuesta(texto) {
+            if (!texto) return texto;
+            if (texto.length <= 220) return texto;
+            return texto.substring(0, 220).trim() + "...";
+        }
+
+        function renderEvaluacion(texto) {
+            const box = document.getElementById('eval-box');
+            let data = null;
+            try {
+                data = JSON.parse(texto);
+            } catch (e) {
+                data = null;
+            }
+            const fortalezas = data && data.fortalezas ? data.fortalezas : "No disponible";
+            const debilidades = data && data.debilidades ? data.debilidades : "No disponible";
+            const mejoras = data && data.mejoras ? data.mejoras : "No disponible";
+
+            box.style.display = 'block';
+            box.innerHTML = '<div class="eval-title">Evaluación final</div>' +
+                '<div class="eval-section"><h4>Fortalezas</h4><div>' + escaparHtml(fortalezas) + '</div></div>' +
+                '<div class="eval-section"><h4>Debilidades</h4><div>' + escaparHtml(debilidades) + '</div></div>' +
+                '<div class="eval-section"><h4>Puntos de mejora</h4><div>' + escaparHtml(mejoras) + '</div></div>';
+        }
+
+        function escaparHtml(texto) {
+            return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\\n/g, "<br>");
+        }
+
+        function actualizarTokens(prompt, respuesta) {
+            if (typeof prompt === "number") tokensPrompt += prompt;
+            if (typeof respuesta === "number") tokensRespuesta += respuesta;
+            const box = document.getElementById('usage-box');
+            box.innerHTML = "Tokens prompt: " + tokensPrompt + " | respuesta: " + tokensRespuesta + " | total: " + (tokensPrompt + tokensRespuesta);
+        }
+
+        function hablarTexto(texto) {
+            if (!window.speechSynthesis) return;
+            if (vozActual) {
+                window.speechSynthesis.cancel();
+            }
+            const utterance = new SpeechSynthesisUtterance(texto);
+            utterance.lang = "es-ES";
+            utterance.voice = seleccionarVozPorSexo();
+            utterance.rate = 1;
+            utterance.pitch = 1;
+            vozActual = utterance;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function seleccionarVozPorSexo() {
+            const sexo = document.getElementById('sexo').value;
+            const voces = window.speechSynthesis.getVoices();
+            if (!voces || voces.length === 0) return null;
+            const filtradas = voces.filter(function (v) { return v.lang && v.lang.toLowerCase().indexOf('es') === 0; });
+            if (sexo === 'masculino') {
+                return filtradas.find(function (v) { return /male|hombre|juan|carlos|pedro|miguel/i.test(v.name); }) || filtradas[0] || voces[0];
+            }
+            return filtradas.find(function (v) { return /female|mujer|ana|laura|maria|carmen/i.test(v.name); }) || filtradas[0] || voces[0];
         }
 
         function addMsg(rem, t, cls) {
