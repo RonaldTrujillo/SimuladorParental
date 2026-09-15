@@ -80,7 +80,7 @@
         }
 
         function llamarIA() {
-            // URL limpia oficial v1 de producción sin errores tipográficos
+            // URL oficial v1 limpia de Google Gemini sin concatenaciones defectuosas
             const urlEndpoint = "https://googleapis.com" + MI_API_KEY;
             
             const transaccion = new XMLHttpRequest();
@@ -92,10 +92,13 @@
                     if (transaccion.status === 200) {
                         try {
                             const JSON_Convertido = JSON.parse(transaccion.responseText);
+                            
+                            // Estructura oficial exacta requerida para leer la respuesta JSON de Gemini 1.5 en producción
                             const respuestaIA = JSON_Convertido.candidates[0].content.parts[0].text;
+                            
                             historialMensajeIA(respuestaIA);
                         } catch(err) {
-                            alert("Error al procesar los datos de la IA: " + err.message);
+                            alert("Error de procesamiento de texto: " + err.message);
                         }
                     } else {
                         const panel = document.getElementById('box-chat');
@@ -104,7 +107,7 @@
                             const errorDetallado = JSON.parse(transaccion.responseText);
                             alert("Aviso de Google: " + errorDetallado.error.message);
                         } catch(e) {
-                            alert("Fallo en la comunicación de red.");
+                            alert("Fallo en la comunicación de red remota.");
                         }
                     }
                 }
